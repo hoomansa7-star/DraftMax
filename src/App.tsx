@@ -1113,6 +1113,7 @@ export default function App() {
         isOpen={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
         categories={categories}
+        defaultCategoryId={filters.categoryId !== 'all' ? filters.categoryId : undefined}
         defaultToday={activeTab === 'today'}
         onCreateTask={handleCreateTask}
         onAddCategory={handleAddCategory}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sun, X } from 'lucide-react';
 import { CategoryItem, Priority, TaskItem } from '../types/task';
 import { CategorySpectrum, getCategorySpectrumClass } from '../utils/categoryTheme';
@@ -10,6 +10,7 @@ interface QuickAddSheetProps {
   isOpen: boolean;
   onClose: () => void;
   categories: CategoryItem[];
+  defaultCategoryId?: string;
   defaultToday?: boolean;
   onCreateTask: (task: TaskItem) => void;
   onAddCategory: (name: string, spectrum?: CategorySpectrum) => CategoryItem | null;
@@ -19,26 +20,41 @@ export function QuickAddSheet({
   isOpen,
   onClose,
   categories,
+  defaultCategoryId,
   defaultToday = false,
   onCreateTask,
   onAddCategory,
 }: QuickAddSheetProps) {
+  const resolvedDefaultCategoryId =
+    defaultCategoryId && categories.some((c) => c.id === defaultCategoryId)
+      ? defaultCategoryId
+      : (categories[0]?.id ?? 'cat_dilan');
+
   const [titleInput, setTitleInput] = useState('');
   const [bodyText, setBodyText] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? 'cat_dilan');
+  const [categoryId, setCategoryId] = useState(resolvedDefaultCategoryId);
   const [priority, setPriority] = useState<Priority>('medium');
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [isToday, setIsToday] = useState(defaultToday);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [creatingCat, setCreatingCat] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      setCategoryId(resolvedDefaultCategoryId);
+      setIsToday(defaultToday);
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, resolvedDefaultCategoryId, defaultToday]);
 
   if (!isOpen) return null;
 
   const resetAndClose = () => {
     setTitleInput('');
     setBodyText('');
-    setCategoryId(categories[0]?.id ?? 'cat_dilan');
+    setCategoryId(resolvedDefaultCategoryId);
     setPriority('medium');
     setDueDate(null);
     setIsToday(defaultToday);
