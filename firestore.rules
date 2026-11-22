@@ -1,0 +1,172 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidPrivateProfile(data, userId) {
+      return data.keys().hasAll(['ownerId', 'displayName', 'email', 'photoURL', 'theme', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'displayName', 'email', 'photoURL', 'theme', 'createdAt', 'updatedAt'])
+        && data.ownerId == userId
+        && data.displayName is string && data.displayName.size() <= 120
+        && data.email is string && data.email.size() <= 200
+        && data.photoURL is string && data.photoURL.size() <= 500
+        && data.theme in ['dark', 'light']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCategory(data, userId, categoryId) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'name', 'order', 'createdAt', 'updatedAt'])
+        && data.id == categoryId
+        && data.ownerId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && (!('order' in data) || (data.order is int && data.order >= 0 && data.order <= 10000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStepsList(steps) {
+      return steps is list
+        && steps.size() <= 100
+        && (
+          steps.size() == 0
+          || (
+            steps[0] is map
+            && steps[0].keys().hasAll(['id', 'text', 'done'])
+            && steps[0].keys().hasOnly(['id', 'text', 'done'])
+            && isValidId(steps[0].id)
+            && steps[0].text is string && steps[0].text.size() >= 1 && steps[0].text.size() <= 300
+            && steps[0].done is bool
+          )
+        );
+    }
+
+    function isValidTask(data, userId, taskId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'title', 'description', 'categoryId', 'priority',
+          'dueDate', 'steps', 'note', 'isToday', 'completed', 'completedAt',
+          'clientCreatedAt', 'isSample', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'title', 'description', 'categoryId', 'priority',
+          'dueDate', 'steps', 'note', 'isToday', 'completed', 'completedAt',
+          'clientCreatedAt', 'isSample', 'createdAt', 'updatedAt'
+        ])
+        && data.id == taskId
+        && data.ownerId == userId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && data.description is string && data.description.size() <= 2000
+        && isValidId(data.categoryId)
+        && data.priority in ['high', 'medium', 'low']
+        && (data.dueDate == null || (data.dueDate is string && data.dueDate.size() <= 10))
+        && isValidStepsList(data.steps)
+        && data.note is string && data.note.size() <= 500
+        && data.isToday is bool
+        && data.completed is bool
+        && (data.completedAt == null || (data.completedAt is string && data.completedAt.size() <= 40))
+        && data.clientCreatedAt is string && data.clientCreatedAt.size() <= 40
+        && data.isSample is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId}/private/profile {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidPrivateProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidPrivateProfile(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['theme', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'theme', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'updatedAt'])
+        );
+      allow delete: if false;
+    }
+
+    match /users/{userId}/categories/{categoryId} {
+      allow get: if isOwner(userId) && isValidId(categoryId);
+      allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(categoryId)
+        && isValidCategory(incoming(), userId, categoryId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(categoryId)
+        && isValidCategory(incoming(), userId, categoryId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['order', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'order', 'updatedAt'])
+        );
+      allow delete: if isOwner(userId) && isValidId(categoryId);
+    }
+
+    match /users/{userId}/tasks/{taskId} {
+      allow get: if isOwner(userId) && isValidId(taskId);
+      allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(taskId)
+        && isValidTask(incoming(), userId, taskId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(taskId)
+        && isValidTask(incoming(), userId, taskId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().clientCreatedAt == existing().clientCreatedAt
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['steps', 'completed', 'completedAt', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['note', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['isToday', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'categoryId', 'priority', 'dueDate', 'steps', 'note', 'isToday', 'completed', 'completedAt', 'updatedAt'])
+        );
+      allow delete: if isOwner(userId) && isValidId(taskId);
+    }
+  }
+}
