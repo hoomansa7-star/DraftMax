@@ -569,9 +569,16 @@ export default function App() {
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
         setAuthError(null);
       } else if (code === 'auth/popup-blocked') {
-        setAuthError('پنجره ورود توسط مرورگر مسدود شد. لطفاً اجازه باز شدن پنجره را بدهید.');
+        setAuthError('پنجره ورود توسط مرورگر مسدود شد. لطفاً اجازه باز شدن پاپ‌آپ را در مرورگر بدهید.');
+      } else if (code === 'auth/unauthorized-domain') {
+        setAuthError(
+          'دامنه سایت در فایربیس مجاز نیست. دامنه draftmax.vercel.app باید در بخش Authentication > Settings > Authorized domains کنسول فایربیس ثبت شود.'
+        );
+      } else if (code === 'auth/network-request-failed') {
+        setAuthError('خطای ارتباط با سرورهای گوگل. لطفاً اتصال اینترنت یا فیلترشکن خود را بررسی کنید.');
       } else {
-        setAuthError('ورود با حساب گوگل ناموفق بود. لطفاً دوباره تلاش کنید.');
+        const msg = (err as { message?: string })?.message ?? '';
+        setAuthError(`ورود با حساب گوگل ناموفق بود: ${code || msg || 'لطفاً دوباره تلاش کنید.'}`);
       }
     } finally {
       setSigningInSlot(null);
