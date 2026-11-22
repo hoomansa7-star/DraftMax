@@ -430,6 +430,8 @@ export default function App() {
   }, [activeUser, cloudReady, cloudTasks, cloudCategories]);
 
   const tasks = isBootstrapping ? [] : showCloudData ? cloudTasks : localTasks;
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
   const rawCategories =
     showCloudData && cloudCategories.length > 0 ? cloudCategories : localCategories;
   const categories = useMemo(() => sortCategoriesByPreset(rawCategories), [rawCategories]);
@@ -494,7 +496,7 @@ export default function App() {
     return localTasks.filter((t) => !t.isSample && !cloudIds.has(t.id));
   }, [isCloudActive, savedAccounts.length, activeSlotId, cloudTasks, localTasks]);
 
-  const showUndo = (message: string, restore: () => void | Promise<void>) => {
+  const showUndo = useCallback((message: string, restore: () => void | Promise<void>) => {
     if (undoTimerRef.current !== null) {
       window.clearTimeout(undoTimerRef.current);
     }
@@ -503,7 +505,7 @@ export default function App() {
       setUndoState(null);
       undoTimerRef.current = null;
     }, 6500);
-  };
+  }, []);
 
   const dismissUndo = () => {
     if (undoTimerRef.current !== null) {
@@ -652,18 +654,18 @@ export default function App() {
     await migrateLocalDataToCloud(activeUser.uid, localUnsyncedTasks, missingCats, activeCloudTarget);
   };
 
-  const handleCloudMutationError = (err: unknown) => {
+  const handleCloudMutationError = useCallback((err: unknown) => {
     const msg = err instanceof Error ? err.message : '';
     if (msg.includes('Quota exceeded')) {
       setCloudError('سهمیه روزانه پایگاه داده ابری به پایان رسیده است و فردا بازنشانی می‌شود.');
     } else {
       setCloudError('خطا در ذخیره تغییرات روی فضای ابری. لطفاً اتصال اینترنت را بررسی کنید.');
     }
-  };
+  }, []);
 
-  const runCloudWrite = (promise: Promise<unknown>) => {
+  const runCloudWrite = useCallback((promise: Promise<unknown>) => {
     void promise.catch(handleCloudMutationError);
-  };
+  }, [handleCloudMutationError]);
 
   const handleToggleTheme = () => {
     const nextTheme: ThemeMode = theme === 'dark' ? 'light' : 'dark';
@@ -712,116 +714,140 @@ export default function App() {
   const hasActiveFilters =
     filters.search.trim().length > 0 || filters.categoryId !== 'all' || filters.priority !== 'all';
 
-  // Task Handlers (dual local + active account Firestore)
-  const handleToggleComplete = (taskId: string) => {
-    const target = tasks.find((t) => t.id === taskId);
-    if (!target) return;
-    const nextCompleted = !target.completed;
-    const updated: TaskItem = {
-      ...target,
-      completed: nextCompleted,
-      completedAt: nextCompleted ? new Date().toISOString() : null,
-    };
-    if (isCloudActive && activeUser) {
-      runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-    }
-  };
+  // Task Handlers (dual local + active account Firestore) - Stabilized with useCallback & tasksRef for locked 60fps rendering
+  const handleToggleComplete = useCallback(
+    (taskId: string) => {
+      const target = tasksRef.current.find((t) => t.id === taskId);
+      if (!target) return;
+      const nextCompleted = !target.completed;
+      const updated: TaskItem = {
+        ...target,
+        completed: nextCompleted,
+        completedAt: nextCompleted ? new Date().toISOString() : null,
+      };
+      if (isCloudActive && activeUser) {
+        runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleToggleToday = (taskId: string) => {
-    const target = tasks.find((t) => t.id === taskId);
-    if (!target) return;
-    const updated = { ...target, isToday: !target.isToday };
-    if (isCloudActive && activeUser) {
-      runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-    }
-  };
+  const handleToggleToday = useCallback(
+    (taskId: string) => {
+      const target = tasksRef.current.find((t) => t.id === taskId);
+      if (!target) return;
+      const updated = { ...target, isToday: !target.isToday };
+      if (isCloudActive && activeUser) {
+        runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleUpdateTitle = (taskId: string, title: string) => {
-    const target = tasks.find((t) => t.id === taskId);
-    if (!target) return;
-    const trimmed = title.trim();
-    if (!trimmed || trimmed === target.title) return;
-    const updated = { ...target, title: trimmed };
-    if (isCloudActive && activeUser) {
-      runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-    }
-  };
+  const handleUpdateTitle = useCallback(
+    (taskId: string, title: string) => {
+      const target = tasksRef.current.find((t) => t.id === taskId);
+      if (!target) return;
+      const trimmed = title.trim();
+      if (!trimmed || trimmed === target.title) return;
+      const updated = { ...target, title: trimmed };
+      if (isCloudActive && activeUser) {
+        runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleUpdateBody = (taskId: string, body: string) => {
-    const target = tasks.find((t) => t.id === taskId);
-    if (!target) return;
-    const updated: TaskItem = {
-      ...target,
-      description: body,
-      note: '',
-      steps: [],
-    };
-    if (isCloudActive && activeUser) {
-      runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-    }
-  };
+  const handleUpdateBody = useCallback(
+    (taskId: string, body: string) => {
+      const target = tasksRef.current.find((t) => t.id === taskId);
+      if (!target) return;
+      const updated: TaskItem = {
+        ...target,
+        description: body,
+        note: '',
+        steps: [],
+      };
+      if (isCloudActive && activeUser) {
+        runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleUpdateTask = (updated: TaskItem) => {
-    if (isCloudActive && activeUser) {
-      runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-    }
-  };
+  const handleUpdateTask = useCallback(
+    (updated: TaskItem) => {
+      if (isCloudActive && activeUser) {
+        runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleCreateTask = (newTask: TaskItem) => {
-    if (isCloudActive && activeUser) {
-      runCloudWrite(createTaskInCloud(activeUser.uid, newTask, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => [newTask, ...prev]);
-    }
-  };
+  const handleCreateTask = useCallback(
+    (newTask: TaskItem) => {
+      if (isCloudActive && activeUser) {
+        runCloudWrite(createTaskInCloud(activeUser.uid, newTask, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => [newTask, ...prev]);
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleRestoreTask = (taskId: string) => {
-    const target = tasks.find((t) => t.id === taskId);
-    if (!target) return;
-    const updated = restoreTaskToActive(target);
-    if (isCloudActive && activeUser) {
-      runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
-    } else {
-      setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-    }
-  };
+  const handleRestoreTask = useCallback(
+    (taskId: string) => {
+      const target = tasksRef.current.find((t) => t.id === taskId);
+      if (!target) return;
+      const updated = restoreTaskToActive(target);
+      if (isCloudActive && activeUser) {
+        runCloudWrite(updateTaskInCloud(activeUser.uid, updated, activeCloudTarget));
+      } else {
+        setLocalTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks]
+  );
 
-  const handleDeleteTask = (taskId: string) => {
-    const targetIndex = tasks.findIndex((t) => t.id === taskId);
-    if (targetIndex === -1) return;
-    const deletedTask = tasks[targetIndex];
+  const handleDeleteTask = useCallback(
+    (taskId: string) => {
+      const targetIndex = tasksRef.current.findIndex((t) => t.id === taskId);
+      if (targetIndex === -1) return;
+      const deletedTask = tasksRef.current[targetIndex];
 
-    if (selectedTaskId === taskId) setSelectedTaskId(null);
+      setSelectedTaskId((prev) => (prev === taskId ? null : prev));
 
-    if (isCloudActive && activeUser) {
-      const uid = activeUser.uid;
-      const targetCloud = activeCloudTarget;
-      runCloudWrite(deleteTaskInCloud(uid, taskId, targetCloud));
-      showUndo(`کار «${deletedTask.title}» حذف شد.`, () =>
-        createTaskInCloud(uid, deletedTask, targetCloud)
-      );
-    } else {
-      setLocalTasks((prev) => prev.filter((t) => t.id !== taskId));
-      showUndo(`کار «${deletedTask.title}» حذف شد.`, () => {
-        setLocalTasks((prev) => {
-          if (prev.some((t) => t.id === deletedTask.id)) return prev;
-          const copy = [...prev];
-          copy.splice(Math.min(targetIndex, copy.length), 0, deletedTask);
-          return copy;
+      if (isCloudActive && activeUser) {
+        const uid = activeUser.uid;
+        const targetCloud = activeCloudTarget;
+        runCloudWrite(deleteTaskInCloud(uid, taskId, targetCloud));
+        showUndo(`کار «${deletedTask.title}» حذف شد.`, () =>
+          createTaskInCloud(uid, deletedTask, targetCloud)
+        );
+      } else {
+        setLocalTasks((prev) => prev.filter((t) => t.id !== taskId));
+        showUndo(`کار «${deletedTask.title}» حذف شد.`, () => {
+          setLocalTasks((prev) => {
+            if (prev.some((t) => t.id === deletedTask.id)) return prev;
+            const copy = [...prev];
+            copy.splice(Math.min(targetIndex, copy.length), 0, deletedTask);
+            return copy;
+          });
         });
-      });
-    }
-  };
+      }
+    },
+    [isCloudActive, activeUser, activeCloudTarget, runCloudWrite, setLocalTasks, showUndo]
+  );
 
   // Category handlers
   const handleAddCategory = (name: string, spectrum?: CategorySpectrum): CategoryItem | null => {

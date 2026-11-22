@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Plus, Search, X } from 'lucide-react';
 import { CategoryItem, FilterState, Priority } from '../types/task';
 import { CategorySpectrum, getCategorySpectrumClass } from '../utils/categoryTheme';
@@ -12,7 +12,7 @@ interface FilterBarProps {
   onReorderCategories: (fromIndex: number, toIndex: number) => void;
 }
 
-export function FilterBar({
+export const FilterBar = memo(function FilterBar({
   filters,
   onChange,
   categories,
@@ -20,6 +20,40 @@ export function FilterBar({
   onReorderCategories,
 }: FilterBarProps) {
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState(filters.search);
+  const debounceTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setSearchDraft(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleSearchChange = (val: string) => {
+    setSearchDraft(val);
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      onChange({ ...filters, search: val });
+    }, 120);
+  };
+
+  const handleClearSearch = () => {
+    setSearchDraft('');
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    onChange({ ...filters, search: '' });
+  };
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [touchDragIndex, setTouchDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -105,16 +139,16 @@ export function FilterBar({
           />
           <input
             type="search"
-            value={filters.search}
-            onChange={(e) => onChange({ ...filters, search: e.target.value })}
+            value={searchDraft}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="جستجو در عنوان کارها..."
             aria-label="جستجو در عنوان کارها"
             className="liquid-glass-control w-full min-h-[44px] pr-10 pl-9 py-2 rounded-2xl border border-white/60 dark:border-white/15 text-base sm:text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-colors"
           />
-          {filters.search.length > 0 && (
+          {searchDraft.length > 0 && (
             <button
               type="button"
-              onClick={() => onChange({ ...filters, search: '' })}
+              onClick={handleClearSearch}
               aria-label="پاک کردن متن جستجو"
               className="absolute left-1.5 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
             >
@@ -290,4 +324,4 @@ export function FilterBar({
       />
     </section>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -37,7 +37,7 @@ function getTaskBodyText(task: TaskItem): string {
   return '';
 }
 
-export function TaskCard({
+export const TaskCard = memo(function TaskCard({
   task,
   categoryName,
   onToggleComplete,
@@ -78,13 +78,13 @@ export function TaskCard({
     }
   }, [task.description, task.note, task.steps, isBodyFocused]);
 
-  // Auto-resize textarea cleanly to fit its text
-  useLayoutEffect(() => {
+  // Adjust textarea height on focus or input change without layout-thrashing on initial mount
+  useEffect(() => {
     const el = textareaRef.current;
-    if (!el) return;
+    if (!el || !isBodyFocused) return;
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 44)}px`;
-  }, [bodyDraft]);
+  }, [bodyDraft, isBodyFocused]);
 
   // Cleanup debounce timer on unmount and flush unsaved changes
   useEffect(() => {
@@ -319,4 +319,4 @@ export function TaskCard({
       )}
     </article>
   );
-}
+});
